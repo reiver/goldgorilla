@@ -2,6 +2,8 @@
 
 **GoldGorilla** is bespoke **Selective Forwarding Unit** (**SFU**) designed to work with **GreatApe**.
 
+**GoldGorilla** helps people with weaker Internet connections be part of a **GreatApe** (video or audio) room.
+
 ## Team
 
 The following is a list of the people who are actively working on GoldGorilla (in alphabetical order):
