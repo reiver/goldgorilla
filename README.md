@@ -9,7 +9,7 @@ The following is a list of the people who are actively working on GoldGorilla (i
 | Name                     | Role                       | Online                                                                             |
 |--------------------------|----------------------------|------------------------------------------------------------------------------------|
 | Atanaz Ostovar           | qa                         |                                                                                    |
-| Benyamin Azarkhazin      | engineering (**primary**)  |                                                                                    |
+| Benyamin Azarkhazin      | engineering (**primary**)  | [🐘](https://mastodon.social/@benyamin0)                                           |
 | Charles Iliya Krempeaux  | product, engineering       | [🐘](https://mastodon.social/@reiver) [🕸️](http://changelog.ca/)                   |
 | Chris Trottier           | community, marketing       | [🐘](https://calckey.social/@atomicpoet) [📷](https://peerverse.space/atomicpoet)  |
 | Massoud Seifi            | engineering                | [🐘](https://mastodon.social/@accesstoken)                                         |
