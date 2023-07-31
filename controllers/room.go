@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"github.com/gin-gonic/gin"
+	"io"
 	"net/http"
 	"sourcecode.social/greatape/goldgorilla/models"
 	"sourcecode.social/greatape/goldgorilla/models/dto"
 	"sourcecode.social/greatape/goldgorilla/repositories"
+	"time"
 )
 
 type RoomController struct {
@@ -141,14 +143,34 @@ func (c *RoomController) ResetRoom(ctx *gin.Context) {
 	}
 	roomId := ""
 	if rid, exists := reqModel["roomId"]; !exists {
-		roomId = rid
 		c.helper.ResponseUnprocessableEntity(ctx)
+		return
+	} else {
+		if castedrid, stringItIs := rid.(string); stringItIs {
+			roomId = castedrid
+		} else {
+			c.helper.ResponseUnprocessableEntity(ctx)
+			return
+		}
 	}
-
 	err := c.repo.ResetRoom(roomId)
 	if c.helper.HandleIfErr(ctx, err, nil) {
 		return
 	}
 
 	c.helper.Response(ctx, nil, http.StatusNoContent)
+}
+
+func (c *RoomController) Start(ctx *gin.Context) {
+	buffer, _ := json.Marshal(map[string]any{"roomId": c.conf.TargetRoom, "svcAddr": c.conf.ServiceAddress})
+	body := bytes.NewReader(buffer)
+	res, err := http.Post(c.conf.LogjamBaseUrl+"/join", "application/json", body)
+	if err != nil {
+		println(err.Error())
+		time.Sleep(4 * time.Second)
+	}
+	if res.StatusCode > 204 {
+		resbody, _ := io.ReadAll(res.Body)
+		println("get /join "+res.Status, string(resbody))
+	}
 }

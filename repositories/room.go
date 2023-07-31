@@ -30,7 +30,7 @@ type Room struct {
 	Peers     map[uint64]*Peer
 	trackLock *sync.Mutex
 	Tracks    map[string]*Track
-	timer     *time.Timer
+	timer     *time.Ticker
 }
 
 type RoomRepository struct {
@@ -412,18 +412,22 @@ func (r *RoomRepository) ClosePeer(roomId string, id uint64) error {
 func (r *RoomRepository) ResetRoom(roomId string) error {
 	r.Lock()
 	if !r.doesRoomExists(roomId) {
-		return
+		r.Unlock()
+		return nil
 	}
-	r.Unlock()
 	room := r.Rooms[roomId]
+	r.Unlock()
+
 	room.Lock()
-	defer room.Unlock()
+
 	room.timer.Stop()
 	for _, peer := range room.Peers {
 		peer.Conn.Close()
 	}
+	room.Unlock()
 
 	r.Lock()
 	delete(r.Rooms, roomId)
 	r.Unlock()
+	return nil
 }

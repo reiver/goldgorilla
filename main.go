@@ -6,7 +6,7 @@ import (
 )
 
 func main() {
-	svcAddr := flag.String("svc-addr", "", "service to register in logjam")
+	svcAddr := flag.String("svc-addr", "", "service baseurl to register in logjam ( shoudln't end with / )")
 	src := flag.String("src", ":8080", "listenhost:listenPort")
 	logjamBaseUrl := flag.String("logjam-base-url", "https://example.com", "logjam base url(shouldn't end with /)")
 	targetRoom := flag.String("targetRoom", "testyroom", "target room")

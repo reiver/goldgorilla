@@ -13,6 +13,7 @@ func (r *Router) RegisterRoutes(rCtrl *controllers.RoomController) error {
 	gin.SetMode(gin.ReleaseMode)
 	r.router = gin.Default()
 	registerRoomRoutes(r.router.Group("/room"), rCtrl)
+	r.router.GET("/healthcheck", controllers.HealthCheck)
 
 	return nil
 }
