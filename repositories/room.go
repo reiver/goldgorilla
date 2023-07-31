@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v3"
-	"sourcecode.social/greatape/goldgorilla/models"
-	"sourcecode.social/greatape/goldgorilla/models/dto"
 	"log"
 	"net/http"
+	"sourcecode.social/greatape/goldgorilla/models"
+	"sourcecode.social/greatape/goldgorilla/models/dto"
 	"sync"
 	"time"
 )
@@ -30,6 +30,7 @@ type Room struct {
 	Peers     map[uint64]*Peer
 	trackLock *sync.Mutex
 	Tracks    map[string]*Track
+	timer     *time.Timer
 }
 
 type RoomRepository struct {
@@ -64,7 +65,7 @@ func (r *RoomRepository) doesPeerExists(roomId string, id uint64) bool {
 	return false
 }
 
-func (r *RoomRepository) CreatePeer(roomId string, id uint64, canPublish, isCaller bool) (*webrtc.SessionDescription, error) {
+func (r *RoomRepository) CreatePeer(roomId string, id uint64, canPublish, isCaller bool) error {
 	r.Lock()
 
 	if !r.doesRoomExists(roomId) {
@@ -73,10 +74,11 @@ func (r *RoomRepository) CreatePeer(roomId string, id uint64, canPublish, isCall
 			Peers:     make(map[uint64]*Peer),
 			trackLock: &sync.Mutex{},
 			Tracks:    make(map[string]*Track),
+			timer:     time.NewTicker(3 * time.Second),
 		}
 		r.Rooms[roomId] = room
 		go func() {
-			for range time.NewTicker(3 * time.Second).C {
+			for range room.timer.C {
 				room.Lock()
 				for _, peer := range room.Peers {
 					for _, receiver := range peer.Conn.GetReceivers() {
@@ -104,14 +106,7 @@ func (r *RoomRepository) CreatePeer(roomId string, id uint64, canPublish, isCall
 
 	peerConn, err := webrtc.NewPeerConnection(webrtc.Configuration{})
 	if err != nil {
-		return nil, models.NewError("can't create peer connection", 500, models.MessageResponse{Message: err.Error()})
-	}
-	for _, typ := range []webrtc.RTPCodecType{webrtc.RTPCodecTypeVideo, webrtc.RTPCodecTypeAudio} {
-		if _, err := peerConn.AddTransceiverFromKind(typ, webrtc.RTPTransceiverInit{
-			Direction: webrtc.RTPTransceiverDirectionSendrecv,
-		}); err != nil {
-			return nil, models.NewError("unhandled error, contact support #1313", 500, err)
-		}
+		return models.NewError("can't create peer connection", 500, models.MessageResponse{Message: err.Error()})
 	}
 
 	peerConn.OnICECandidate(func(ic *webrtc.ICECandidate) {
@@ -124,29 +119,12 @@ func (r *RoomRepository) CreatePeer(roomId string, id uint64, canPublish, isCall
 		r.onPeerTrack(roomId, id, remote, receiver)
 	})
 
-	var sdp *webrtc.SessionDescription
-	if !isCaller {
-		offer, err := peerConn.CreateOffer(nil)
-		if err != nil {
-			println(err.Error())
-			peerConn.Close()
-			return nil, models.NewError("unhandled error, contact support #1314", 500, err)
-		}
-		err = peerConn.SetLocalDescription(offer)
-		if err != nil {
-			println(err.Error())
-			peerConn.Close()
-			return nil, models.NewError("unhandled error, contact support #1315", 500, err)
-		}
-		sdp = &offer
-	}
-
 	room.Peers[id] = &Peer{
 		ID:   id,
 		Conn: peerConn,
 	}
-
-	return sdp, nil
+	go r.updatePCTracks(roomId)
+	return nil
 }
 
 func (r *RoomRepository) onPeerICECandidate(roomId string, id uint64, ic *webrtc.ICECandidate) {
@@ -271,33 +249,53 @@ func (r *RoomRepository) updatePCTracks(roomId string) {
 			receivingPeerTracks[track.ID()] = rtpReceiver
 		}
 		room.trackLock.Lock()
+		renegotiate := false
 		for id, track := range room.Tracks {
 			_, alreadySend := alreadySentTracks[id]
 			_, alreadyReceiver := receivingPeerTracks[id]
 			if track.OwnerId != peer.ID && (!alreadySend && !alreadyReceiver) {
-				go func(peer *Peer, track *Track) {
-					println("add track")
-					_, err := peer.Conn.AddTrack(track.TrackLocal)
-					if err != nil {
-						println(err.Error())
-					}
-				}(peer, track)
+				renegotiate = true
+				println("add track")
+				_, err := peer.Conn.AddTrack(track.TrackLocal)
+				if err != nil {
+					println(err.Error())
+					return
+				}
 			}
 		}
 		room.trackLock.Unlock()
-
-		/*room.trackLock.Lock()
-		for trackId, _ := range alreadySentTracks {
-			if _, exists := room.Tracks[trackId]; !exists {
-				go func(peer *Peer, rtpSender *webrtc.RTPSender) {
-					err := peer.Conn.RemoveTrack(rtpSender)
-					if err != nil {
-						println(err.Error())
-					}
-				}(peer, alreadySentTracks[trackId])
+		if renegotiate {
+			offer, err := peer.Conn.CreateOffer(nil)
+			if err != nil {
+				println(err.Error())
+				return
+			}
+			err = peer.Conn.SetLocalDescription(offer)
+			if err != nil {
+				println(err.Error())
+				return
+			}
+			reqModel := dto.SetSDPReqModel{
+				PeerDTO: dto.PeerDTO{
+					RoomId: roomId,
+					ID:     peer.ID,
+				},
+				SDP: offer,
+			}
+			bodyJson, err := json.Marshal(reqModel)
+			if err != nil {
+				println(err.Error())
+				return
+			}
+			res, err := http.Post(r.conf.LogjamBaseUrl+"/offer", "application/json", bytes.NewReader(bodyJson))
+			if err != nil {
+				println(err.Error())
+				return
+			}
+			if res.StatusCode > 204 {
+				println("/offer ", res.Status)
 			}
 		}
-		room.trackLock.Unlock()*/
 	}
 }
 
@@ -409,4 +407,23 @@ func (r *RoomRepository) ClosePeer(roomId string, id uint64) error {
 		return models.NewError("no such a peer with this id in this room", 403, map[string]any{"roomId": roomId, "peerId": id})
 	}
 	return room.Peers[id].Conn.Close()
+}
+
+func (r *RoomRepository) ResetRoom(roomId string) error {
+	r.Lock()
+	if !r.doesRoomExists(roomId) {
+		return
+	}
+	r.Unlock()
+	room := r.Rooms[roomId]
+	room.Lock()
+	defer room.Unlock()
+	room.timer.Stop()
+	for _, peer := range room.Peers {
+		peer.Conn.Close()
+	}
+
+	r.Lock()
+	delete(r.Rooms, roomId)
+	r.Unlock()
 }

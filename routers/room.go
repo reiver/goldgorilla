@@ -12,5 +12,6 @@ func registerRoomRoutes(rg *gin.RouterGroup, ctrl *controllers.RoomController) {
 	rg.POST("/ice", ctrl.AddICECandidate)
 	rg.POST("/answer", ctrl.Answer)
 	rg.POST("/offer", ctrl.Offer)
+	rg.DELETE("/", ctrl.ResetRoom)
 
 }

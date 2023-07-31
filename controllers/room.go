@@ -4,10 +4,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"github.com/gin-gonic/gin"
+	"net/http"
 	"sourcecode.social/greatape/goldgorilla/models"
 	"sourcecode.social/greatape/goldgorilla/models/dto"
 	"sourcecode.social/greatape/goldgorilla/repositories"
-	"net/http"
 )
 
 type RoomController struct {
@@ -34,34 +34,11 @@ func (c *RoomController) CreatePeer(ctx *gin.Context) {
 		c.helper.ResponseUnprocessableEntity(ctx)
 		return
 	}
-	offer, err := c.repo.CreatePeer(reqModel.RoomId, reqModel.ID, reqModel.CanPublish, reqModel.IsCaller)
+	err := c.repo.CreatePeer(reqModel.RoomId, reqModel.ID, reqModel.CanPublish, reqModel.IsCaller)
 	if c.helper.HandleIfErr(ctx, err, nil) {
 		return
 	}
 	c.helper.Response(ctx, struct{}{}, http.StatusNoContent)
-
-	if offer != nil {
-		buffer, err := json.Marshal(dto.SetSDPReqModel{
-			PeerDTO: dto.PeerDTO{
-				RoomId: reqModel.RoomId,
-				ID:     reqModel.ID,
-			},
-			SDP: *offer,
-		})
-		if err != nil {
-			println(err.Error())
-			return
-		}
-		reader := bytes.NewReader(buffer)
-		resp, err := http.Post(c.conf.LogjamBaseUrl+"/offer", "application/json", reader)
-		if err != nil {
-			println(err.Error())
-			return
-		}
-		if resp.StatusCode > 204 {
-			println(resp.Status)
-		}
-	}
 }
 
 func (c *RoomController) AddICECandidate(ctx *gin.Context) {
@@ -133,6 +110,7 @@ func (c *RoomController) Answer(ctx *gin.Context) {
 	}
 	err := c.repo.SetPeerAnswer(reqModel.RoomId, reqModel.ID, reqModel.SDP)
 	if c.helper.HandleIfErr(ctx, err, nil) {
+		println(err.Error())
 		return
 	}
 	c.helper.Response(ctx, struct{}{}, http.StatusNoContent)
@@ -153,4 +131,24 @@ func (c *RoomController) ClosePeer(ctx *gin.Context) {
 		return
 	}
 	c.helper.Response(ctx, struct{}{}, http.StatusNoContent)
+}
+
+func (c *RoomController) ResetRoom(ctx *gin.Context) {
+	var reqModel map[string]any
+	badReqSt := 400
+	if err := ctx.ShouldBindJSON(&reqModel); c.helper.HandleIfErr(ctx, err, &badReqSt) {
+		return
+	}
+	roomId := ""
+	if rid, exists := reqModel["roomId"]; !exists {
+		roomId = rid
+		c.helper.ResponseUnprocessableEntity(ctx)
+	}
+
+	err := c.repo.ResetRoom(roomId)
+	if c.helper.HandleIfErr(ctx, err, nil) {
+		return
+	}
+
+	c.helper.Response(ctx, nil, http.StatusNoContent)
 }

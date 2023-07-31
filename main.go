@@ -6,6 +6,7 @@ import (
 )
 
 func main() {
+	svcAddr := flag.String("svc-addr", "", "service to register in logjam")
 	src := flag.String("src", ":8080", "listenhost:listenPort")
 	logjamBaseUrl := flag.String("logjam-base-url", "https://example.com", "logjam base url(shouldn't end with /)")
 	targetRoom := flag.String("targetRoom", "testyroom", "target room")
@@ -15,7 +16,10 @@ func main() {
 	if strings.HasSuffix(*logjamBaseUrl, "/") {
 		panic("logjam-base-url shouldn't end with /")
 	}
+	if strings.HasSuffix(*svcAddr, "/") {
+		panic("service address shouldn't end with /")
+	}
 	app := App{}
-	app.Init(*src, *logjamBaseUrl, *targetRoom)
+	app.Init(*src, *svcAddr, *logjamBaseUrl, *targetRoom)
 	app.Run()
 }
