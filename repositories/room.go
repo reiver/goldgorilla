@@ -25,6 +25,7 @@ type Peer struct {
 	Conn          *webrtc.PeerConnection
 	CanPublish    bool
 	HandshakeLock *sync.Mutex
+	didOnce       bool
 }
 
 type Room struct {
@@ -237,7 +238,7 @@ func (r *RoomRepository) updatePCTracks(roomId string) {
 		return
 	}
 	room := r.Rooms[roomId]
-	defer r.Unlock()
+	r.Unlock()
 	room.Lock()
 	defer room.Unlock()
 	for _, peer := range room.Peers {
@@ -278,17 +279,19 @@ func (r *RoomRepository) updatePCTracks(roomId string) {
 		for trackId, rtpSender := range alreadySentTracks {
 			if _, exists := room.Tracks[trackId]; !exists {
 				println("[PC] remove track", trackId, "from", peer.ID)
-				_ = rtpSender.Stop()
+				//_ = rtpSender.Stop()
 				_ = peer.Conn.RemoveTrack(rtpSender)
 			}
 		}
 		room.trackLock.Unlock()
 		if renegotiate {
-			err := r.offerPeer(peer, roomId)
-			if err != nil {
-				println(`[E]`, err.Error())
-				return
-			}
+			go func(peer *Peer, roomId string) {
+				err := r.offerPeer(peer, roomId)
+				if err != nil {
+					println(`[E]`, err.Error())
+					return
+				}
+			}(peer, roomId)
 		}
 	}
 }
