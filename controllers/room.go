@@ -70,6 +70,7 @@ func (c *RoomController) Offer(ctx *gin.Context) {
 		c.helper.ResponseUnprocessableEntity(ctx)
 		return
 	}
+	println("offer from", reqModel.ID)
 	answer, err := c.repo.SetPeerOffer(reqModel.RoomId, reqModel.ID, reqModel.SDP)
 	if c.helper.HandleIfErr(ctx, err, nil) {
 		println(err.Error())
@@ -110,6 +111,7 @@ func (c *RoomController) Answer(ctx *gin.Context) {
 		c.helper.ResponseUnprocessableEntity(ctx)
 		return
 	}
+	println("answer from", reqModel.ID)
 	err := c.repo.SetPeerAnswer(reqModel.RoomId, reqModel.ID, reqModel.SDP)
 	if c.helper.HandleIfErr(ctx, err, nil) {
 		println(err.Error())
