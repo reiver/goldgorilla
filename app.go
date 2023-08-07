@@ -40,7 +40,7 @@ func (a *App) Init(srcListenAddr string, svcAddr string, logjamBaseUrl string, t
 
 	{
 		sigs := make(chan os.Signal, 1)
-		signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGKILL, syscall.SIGILL, syscall.SIGSTOP)
+		signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGKILL, syscall.SIGILL)
 		go func() {
 			a.onDie(<-sigs)
 		}()

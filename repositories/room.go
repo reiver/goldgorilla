@@ -275,11 +275,6 @@ func (r *RoomRepository) updatePCTracks(roomId string) {
 					println(err.Error())
 					return
 				}
-				_, err = peer.Conn.AddTransceiverFromTrack(track.TrackLocal)
-				if err != nil {
-					println("t", err.Error())
-					return
-				}
 			}
 		}
 		for trackId, rtpSender := range alreadySentTracks {
