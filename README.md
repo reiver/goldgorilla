@@ -14,7 +14,7 @@ The following is a list of the people who are actively working on GoldGorilla (i
 | Benyamin Azarkhazin      | engineering (**primary**)  | [🐘](https://mastodon.social/@benyamin0)                                           |
 | Charles Iliya Krempeaux  | product, engineering       | [🐘](https://mastodon.social/@reiver) [🕸️](http://changelog.ca/)                   |
 | Chris Trottier           | community, marketing       | [🐘](https://calckey.social/@atomicpoet) [📷](https://peerverse.space/atomicpoet)  |
-| Massoud Seifi            | engineering                | [🐘](https://mastodon.social/@accesstoken)                                         |
+| Massoud Seifi            | engineering                | [🐘](https://mastodon.social/@accesstoken) [📷](https://onepicaday.com/massoud)    |
 | Mehrdad Mirsamie         | engineering                | [🐘](https://mastodon.social/@mmcomp)                                              |
 | Sepideh Farsi            | qa                         |                                                                                    |
 
