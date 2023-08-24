@@ -53,7 +53,17 @@ func (c *RoomController) AddICECandidate(ctx *gin.Context) {
 		c.helper.ResponseUnprocessableEntity(ctx)
 		return
 	}
+	tryCounter := 0
+start:
 	err := c.repo.AddPeerIceCandidate(reqModel.RoomId, reqModel.ID, reqModel.ICECandidate)
+	if err != nil {
+		if tryCounter < 4 {
+			time.Sleep(1 * time.Second)
+			tryCounter++
+			goto start
+		}
+	}
+
 	if c.helper.HandleIfErr(ctx, err, nil) {
 		return
 	}
