@@ -6,10 +6,10 @@ import (
 )
 
 func main() {
-	svcAddr := flag.String("svc-addr", "", "service baseurl to register in logjam ( shoudln't end with / )")
-	src := flag.String("src", ":8080", "listenhost:listenPort")
-	logjamBaseUrl := flag.String("logjam-base-url", "https://example.com", "logjam base url(shouldn't end with /)")
-	targetRoom := flag.String("targetRoom", "testyroom", "target room")
+	svcAddr := flag.String("svc-addr", "http://localhost:8080", "service baseurl to register in logjam ( shouldn't end with / )")
+	src := flag.String("src", ":8080", "listenHost:listenPort")
+	logjamBaseUrl := flag.String("logjam-base-url", "http://localhost:8090", "logjam base url( shouldn't end with / )")
+	targetRoom := flag.String("targetRoom", "test", "target room")
 
 	flag.Parse()
 
