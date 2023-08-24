@@ -109,10 +109,10 @@ func (r *RoomRepository) CreatePeer(roomId string, id uint64, canPublish bool, i
 
 	room := r.Rooms[roomId]
 	r.Unlock()
-	room.Lock()
-	defer room.Unlock()
 
-	peerConn, err := webrtc.NewPeerConnection(webrtc.Configuration{})
+	peerConn, err := webrtc.NewPeerConnection(webrtc.Configuration{
+		ICEServers: r.conf.ICEServers,
+	})
 	if err != nil {
 		return models.NewError("can't create peer connection", 500, models.MessageResponse{Message: err.Error()})
 	}
@@ -130,6 +130,8 @@ func (r *RoomRepository) CreatePeer(roomId string, id uint64, canPublish bool, i
 		println("[PC] negotiating with peer", id)
 		r.offerPeer(peerConn,roomId,id)
 	})*/
+	room.Lock()
+	defer room.Unlock()
 	room.Peers[id] = &Peer{
 		ID:            id,
 		Conn:          peerConn,
@@ -175,8 +177,8 @@ func (r *RoomRepository) onPeerConnectionStateChange(roomId string, id uint64, n
 		r.Unlock()
 		return
 	}
-	r.Unlock()
 	room := r.Rooms[roomId]
+	r.Unlock()
 	room.Lock()
 	defer room.Unlock()
 
@@ -329,20 +331,20 @@ func (r *RoomRepository) SetPeerAnswer(roomId string, id uint64, answer webrtc.S
 		r.Unlock()
 		return models.NewError("room doesn't exists", 403, map[string]any{"roomId": roomId})
 	}
-	r.Unlock()
 	room := r.Rooms[roomId]
+	r.Unlock()
 	room.Lock()
-	defer room.Unlock()
-
 	if !r.doesPeerExists(roomId, id) {
+		room.Unlock()
 		return models.NewError("no such a peer with this id in this room", 403, map[string]any{"roomId": roomId, "peerId": id})
 	}
-
-	err := room.Peers[id].Conn.SetRemoteDescription(answer)
+	peer := room.Peers[id]
+	room.Unlock()
+	err := peer.Conn.SetRemoteDescription(answer)
 	if err != nil {
 		return models.NewError(err.Error(), 500, models.MessageResponse{Message: err.Error()})
 	}
-	room.Peers[id].HandshakeLock.Unlock()
+	peer.HandshakeLock.Unlock()
 	return nil
 }
 func (r *RoomRepository) SetPeerOffer(roomId string, id uint64, offer webrtc.SessionDescription) (sdpAnswer *webrtc.SessionDescription, err error) {
@@ -408,15 +410,17 @@ func (r *RoomRepository) ClosePeer(roomId string, id uint64) error {
 		r.Unlock()
 		return models.NewError("room doesn't exists", 403, map[string]any{"roomId": roomId})
 	}
-	r.Unlock()
 	room := r.Rooms[roomId]
+	r.Unlock()
 	room.Lock()
-	defer room.Unlock()
+	peer := room.Peers[id]
 
 	if !r.doesPeerExists(roomId, id) {
+		room.Unlock()
 		return models.NewError("no such a peer with this id in this room", 403, map[string]any{"roomId": roomId, "peerId": id})
 	}
-	return room.Peers[id].Conn.Close()
+	room.Unlock()
+	return peer.Conn.Close()
 }
 
 func (r *RoomRepository) ResetRoom(roomId string) error {

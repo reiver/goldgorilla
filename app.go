@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/pion/webrtc/v3"
 	"io"
 	"net/http"
 	"os"
@@ -25,17 +26,28 @@ type App struct {
 func (a *App) Init(srcListenAddr string, svcAddr string, logjamBaseUrl string, targetRoom string) {
 	println("initializing ..")
 	a.src = srcListenAddr
+	var iceServers []webrtc.ICEServer
+	iceconfjson, err := os.ReadFile("./ice.servers.json")
+	if err != nil {
+		println("[E] error reading ice.servers.json: " + err.Error())
+	} else {
+		err = json.Unmarshal(iceconfjson, &iceServers)
+		if err != nil {
+			panic("[E] can't parse ice.servers.json: " + err.Error())
+		}
+	}
 	a.conf = &models.ConfigModel{
 		LogjamBaseUrl:  logjamBaseUrl + "/auxiliary-node",
 		TargetRoom:     targetRoom,
 		ServiceAddress: svcAddr,
+		ICEServers:     iceServers,
 	}
 	roomRepo := repositories.NewRoomRepository(a.conf)
 	a.router = &routers.Router{}
 	respHelper := controllers.NewResponseHelper()
 	roomCtrl := controllers.NewRoomController(respHelper, roomRepo, a.conf)
 
-	err := a.router.RegisterRoutes(roomCtrl)
+	err = a.router.RegisterRoutes(roomCtrl)
 	panicIfErr(err)
 
 	{
