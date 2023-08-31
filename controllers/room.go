@@ -185,4 +185,15 @@ func (c *RoomController) Start(ctx *gin.Context) {
 		resbody, _ := io.ReadAll(res.Body)
 		println("get /join "+res.Status, string(resbody))
 	}
+	c.helper.Response(ctx, nil, http.StatusNoContent)
+}
+
+func (c *RoomController) HealthCheck(ctx *gin.Context) {
+	if len(ctx.Query("roomId")) > 0 {
+		if !c.repo.DoesRoomExists(ctx.Query("roomId")) {
+			ctx.Status(http.StatusNotFound)
+			return
+		}
+	}
+	ctx.Status(204)
 }
