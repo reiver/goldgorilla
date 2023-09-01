@@ -127,6 +127,9 @@ func (r *RoomRepository) CreatePeer(roomId string, id uint64, canPublish bool, i
 	})
 	peerConn.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
 		r.onPeerConnectionStateChange(roomId, id, state)
+		if state == webrtc.PeerConnectionStateClosed && isCaller {
+			go r.onCallerDisconnected(roomId)
+		}
 	})
 	peerConn.OnTrack(func(remote *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
 		r.onPeerTrack(roomId, id, remote, receiver)
@@ -146,6 +149,31 @@ func (r *RoomRepository) CreatePeer(roomId string, id uint64, canPublish bool, i
 	}
 	go r.updatePCTracks(roomId)
 	return nil
+}
+
+func (r *RoomRepository) onCallerDisconnected(roomId string) {
+	reqModel := struct {
+		RoomId string `json:"roomId"`
+	}{
+		RoomId: roomId,
+	}
+	serializedReqBody, err := json.Marshal(reqModel)
+	if err != nil {
+		println(err.Error())
+		return
+	}
+	if err = r.ResetRoom(roomId); err != nil {
+		println(err.Error())
+		return
+	}
+	resp, err := http.Post(r.conf.LogjamBaseUrl+"/rejoin", "application/json", bytes.NewReader(serializedReqBody))
+	if err != nil {
+		println(err.Error())
+		return
+	}
+	if resp.StatusCode > 204 {
+		println("/rejoin", resp.Status)
+	}
 }
 
 func (r *RoomRepository) onPeerICECandidate(roomId string, id uint64, ic *webrtc.ICECandidate) {
@@ -187,7 +215,10 @@ func (r *RoomRepository) onPeerConnectionStateChange(roomId string, id uint64, n
 	room.Lock()
 	defer room.Unlock()
 
+	println("[PC] con_stat", newState.String(), id)
 	switch newState {
+	case webrtc.PeerConnectionStateDisconnected:
+		fallthrough
 	case webrtc.PeerConnectionStateFailed:
 		if err := room.Peers[id].Conn.Close(); err != nil {
 			println(err.Error())
