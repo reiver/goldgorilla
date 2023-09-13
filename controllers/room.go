@@ -181,7 +181,7 @@ func (c *RoomController) Start(ctx *gin.Context) {
 		println(err.Error())
 		time.Sleep(4 * time.Second)
 	}
-	if res.StatusCode > 204 {
+	if res != nil && res.StatusCode > 204 {
 		resbody, _ := io.ReadAll(res.Body)
 		println("get /join "+res.Status, string(resbody))
 	}

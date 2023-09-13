@@ -20,11 +20,14 @@ type Track struct {
 }
 
 type Peer struct {
-	ID            uint64
-	Conn          *webrtc.PeerConnection
-	CanPublish    bool
-	IsCaller      bool
-	HandshakeLock *sync.Mutex
+	ID                     uint64
+	Conn                   *webrtc.PeerConnection
+	CanPublish             bool
+	IsCaller               bool
+	HandshakeLock          *sync.Mutex
+	gotFirstVideoTrack     bool
+	gotFirstAudioTrack     bool
+	triggeredReconnectOnce bool
 }
 
 type Room struct {
@@ -126,9 +129,25 @@ func (r *RoomRepository) CreatePeer(roomId string, id uint64, canPublish bool, i
 		r.onPeerICECandidate(roomId, id, ic)
 	})
 	peerConn.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
-		r.onPeerConnectionStateChange(roomId, id, state)
-		if state == webrtc.PeerConnectionStateClosed && isCaller {
-			go r.onCallerDisconnected(roomId)
+		r.Lock()
+		if !r.doesRoomExists(roomId) {
+			r.Unlock()
+			return
+		}
+		room := r.Rooms[roomId]
+		r.Unlock()
+		room.Lock()
+		defer room.Unlock()
+		peer, stillThere := room.Peers[id]
+
+		r.onPeerConnectionStateChange(room, peer, state)
+		{
+			if state == webrtc.PeerConnectionStateClosed && isCaller {
+				if stillThere && peer.triggeredReconnectOnce {
+					return
+				}
+				go r.onCallerDisconnected(roomId)
+			}
 		}
 	})
 	peerConn.OnTrack(func(remote *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
@@ -203,28 +222,20 @@ func (r *RoomRepository) onPeerICECandidate(roomId string, id uint64, ic *webrtc
 	}
 }
 
-func (r *RoomRepository) onPeerConnectionStateChange(roomId string, id uint64, newState webrtc.PeerConnectionState) {
-	r.Lock()
-
-	if !r.doesRoomExists(roomId) {
-		r.Unlock()
+func (r *RoomRepository) onPeerConnectionStateChange(room *Room, peer *Peer, newState webrtc.PeerConnectionState) {
+	if peer == nil {
 		return
 	}
-	room := r.Rooms[roomId]
-	r.Unlock()
-	room.Lock()
-	defer room.Unlock()
-
-	println("[PC] con_stat", newState.String(), id)
+	println("[PC] con_stat", newState.String(), peer.ID)
 	switch newState {
 	case webrtc.PeerConnectionStateDisconnected:
 		fallthrough
 	case webrtc.PeerConnectionStateFailed:
-		if err := room.Peers[id].Conn.Close(); err != nil {
+		if err := peer.Conn.Close(); err != nil {
 			println(err.Error())
 		}
 	case webrtc.PeerConnectionStateClosed:
-		delete(room.Peers, id)
+		delete(room.Peers, peer.ID)
 	}
 }
 
@@ -248,6 +259,19 @@ func (r *RoomRepository) onPeerTrack(roomId string, id uint64, remote *webrtc.Tr
 		TrackLocal: trackLocal,
 	}
 	room.trackLock.Unlock()
+	firstVideo := false
+	firstAudio := false
+	room.Lock()
+	peer := room.Peers[id]
+	room.Unlock()
+	if remote.Kind() == webrtc.RTPCodecTypeVideo && !peer.gotFirstVideoTrack {
+		peer.gotFirstVideoTrack = true
+		firstVideo = true
+	}
+	if remote.Kind() == webrtc.RTPCodecTypeAudio && !peer.gotFirstAudioTrack {
+		peer.gotFirstAudioTrack = true
+		firstAudio = true
+	}
 
 	defer func(trackId string) {
 		room.trackLock.Lock()
@@ -268,9 +292,14 @@ func (r *RoomRepository) onPeerTrack(roomId string, id uint64, remote *webrtc.Tr
 			break
 		}
 	}
+	if (firstVideo || firstAudio) && peer.IsCaller && !peer.triggeredReconnectOnce {
+		go r.onCallerDisconnected(roomId)
+		peer.triggeredReconnectOnce = true
+	}
 }
 
 func (r *RoomRepository) updatePCTracks(roomId string) {
+	println("[] updatePCTracks start")
 	r.Lock()
 	if !r.doesRoomExists(roomId) {
 		r.Unlock()
@@ -343,6 +372,7 @@ func (r *RoomRepository) updatePCTracks(roomId string) {
 			}(peer, roomId)
 		}
 	}
+	println("[] updatePCTracks end")
 }
 
 func (r *RoomRepository) AddPeerIceCandidate(roomId string, id uint64, ic webrtc.ICECandidateInit) error {
