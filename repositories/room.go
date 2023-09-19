@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/pion/interceptor"
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v3"
+	"net"
 	"net/http"
 	"sourcecode.social/greatape/goldgorilla/models"
 	"sourcecode.social/greatape/goldgorilla/models/dto"
@@ -39,13 +41,47 @@ type Room struct {
 }
 
 type RoomRepository struct {
+	api   *webrtc.API
 	Rooms map[string]*Room
 	conf  *models.ConfigModel
 	*sync.Mutex
 }
 
 func NewRoomRepository(conf *models.ConfigModel) *RoomRepository {
+	settingEngine := webrtc.SettingEngine{}
+
+	settingEngine.SetNetworkTypes([]webrtc.NetworkType{
+		webrtc.NetworkTypeTCP6,
+		webrtc.NetworkTypeUDP6,
+		webrtc.NetworkTypeTCP4,
+		webrtc.NetworkTypeUDP4,
+	})
+	tcpListener, err := net.ListenTCP("tcp", &net.TCPAddr{
+		IP:   net.IP{0, 0, 0, 0},
+		Port: int(conf.ICETCPMUXListenPort),
+	})
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("Listening for ICE TCP at %s\n", tcpListener.Addr())
+
+	tcpMux := webrtc.NewICETCPMux(nil, tcpListener, 64)
+	settingEngine.SetICETCPMux(tcpMux)
+
+	m := &webrtc.MediaEngine{}
+	if err := m.RegisterDefaultCodecs(); err != nil {
+		panic(err)
+	}
+
+	i := &interceptor.Registry{}
+	if err := webrtc.RegisterDefaultInterceptors(m, i); err != nil {
+		panic(err)
+	}
+
+	api := webrtc.NewAPI(webrtc.WithMediaEngine(m), webrtc.WithInterceptorRegistry(i), webrtc.WithSettingEngine(settingEngine))
+
 	return &RoomRepository{
+		api:   api,
 		Mutex: &sync.Mutex{},
 		Rooms: make(map[string]*Room),
 		conf:  conf,
@@ -118,7 +154,7 @@ func (r *RoomRepository) CreatePeer(roomId string, id uint64, canPublish bool, i
 	room := r.Rooms[roomId]
 	r.Unlock()
 
-	peerConn, err := webrtc.NewPeerConnection(webrtc.Configuration{
+	peerConn, err := r.api.NewPeerConnection(webrtc.Configuration{
 		ICEServers: r.conf.ICEServers,
 	})
 	if err != nil {
@@ -241,6 +277,7 @@ func (r *RoomRepository) onPeerConnectionStateChange(room *Room, peer *Peer, new
 
 func (r *RoomRepository) onPeerTrack(roomId string, id uint64, remote *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
 	fmt.Println("got a track!", remote.ID(), remote.StreamID(), remote.Kind().String())
+	println("pc", id, "streamid", remote.StreamID())
 	r.Lock()
 	if !r.doesRoomExists(roomId) {
 		r.Unlock()
