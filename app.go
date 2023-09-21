@@ -23,7 +23,7 @@ type App struct {
 	src    string
 }
 
-func (a *App) Init(srcListenAddr string, svcAddr string, logjamBaseUrl string, targetRoom string, iceTCPMUXListenPort uint) {
+func (a *App) Init(srcListenAddr string, svcAddr string, logjamBaseUrl string, targetRoom string, iceTCPMUXListenPort uint, customICEHostCandidateIP string) {
 	println("initializing ..")
 	a.src = srcListenAddr
 	var iceServers []webrtc.ICEServer
@@ -37,11 +37,12 @@ func (a *App) Init(srcListenAddr string, svcAddr string, logjamBaseUrl string, t
 		}
 	}
 	a.conf = &models.ConfigModel{
-		LogjamBaseUrl:       logjamBaseUrl + "/auxiliary-node",
-		TargetRoom:          targetRoom,
-		ServiceAddress:      svcAddr,
-		ICEServers:          iceServers,
-		ICETCPMUXListenPort: iceTCPMUXListenPort,
+		LogjamBaseUrl:            logjamBaseUrl + "/auxiliary-node",
+		TargetRoom:               targetRoom,
+		ServiceAddress:           svcAddr,
+		ICEServers:               iceServers,
+		ICETCPMUXListenPort:      iceTCPMUXListenPort,
+		CustomICEHostCandidateIP: customICEHostCandidateIP,
 	}
 	roomRepo := repositories.NewRoomRepository(a.conf)
 	a.router = &routers.Router{}

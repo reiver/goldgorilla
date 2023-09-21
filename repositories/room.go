@@ -49,7 +49,9 @@ type RoomRepository struct {
 
 func NewRoomRepository(conf *models.ConfigModel) *RoomRepository {
 	settingEngine := webrtc.SettingEngine{}
-
+	if len(conf.CustomICEHostCandidateIP) > 0 {
+		settingEngine.SetNAT1To1IPs([]string{conf.CustomICEHostCandidateIP}, webrtc.ICECandidateTypeHost)
+	}
 	settingEngine.SetNetworkTypes([]webrtc.NetworkType{
 		webrtc.NetworkTypeTCP6,
 		webrtc.NetworkTypeUDP6,
@@ -277,7 +279,6 @@ func (r *RoomRepository) onPeerConnectionStateChange(room *Room, peer *Peer, new
 
 func (r *RoomRepository) onPeerTrack(roomId string, id uint64, remote *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
 	fmt.Println("got a track!", remote.ID(), remote.StreamID(), remote.Kind().String())
-	println("pc", id, "streamid", remote.StreamID())
 	r.Lock()
 	if !r.doesRoomExists(roomId) {
 		r.Unlock()
