@@ -209,28 +209,11 @@ func (r *RoomRepository) CreatePeer(roomId string, id uint64, canPublish bool, i
 }
 
 func (r *RoomRepository) onCallerDisconnected(roomId string) {
-	reqModel := struct {
-		RoomId string `json:"roomId"`
-	}{
-		RoomId: roomId,
-	}
-	serializedReqBody, err := json.Marshal(reqModel)
-	if err != nil {
+	if err := r.ResetRoom(roomId); err != nil {
 		println(err.Error())
 		return
 	}
-	if err = r.ResetRoom(roomId); err != nil {
-		println(err.Error())
-		return
-	}
-	resp, err := http.Post(r.conf.LogjamBaseUrl+"/rejoin", "application/json", bytes.NewReader(serializedReqBody))
-	if err != nil {
-		println(err.Error())
-		return
-	}
-	if resp.StatusCode > 204 {
-		println("/rejoin", resp.Status)
-	}
+	*r.conf.StartRejoinCH <- false
 }
 
 func (r *RoomRepository) onPeerICECandidate(roomId string, id uint64, ic *webrtc.ICECandidate) {

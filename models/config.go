@@ -9,4 +9,5 @@ type ConfigModel struct {
 	ICETCPMUXListenPort      uint               `json:"ice_tcpmux_listenPort"`
 	CustomICEHostCandidateIP string             `json:"customICEHostCandidateIP"`
 	ICEServers               []webrtc.ICEServer `json:"iceServers"`
+	StartRejoinCH            *chan bool
 }

@@ -18,7 +18,7 @@ func (err BigError) Meta() any {
 	return err.metaData
 }
 
-func NewError(msg string, errCode int, meta any) BigError {
+func NewError(msg string, errCode int, meta any) error {
 	if meta == nil {
 		meta = struct {
 		}{}
@@ -30,7 +30,7 @@ func NewError(msg string, errCode int, meta any) BigError {
 	}
 }
 
-func (BigError) FromErr(err error, errCode int, meta any) BigError {
+func (BigError) FromErr(err error, errCode int, meta any) error {
 	if meta == nil {
 		meta = err
 	}

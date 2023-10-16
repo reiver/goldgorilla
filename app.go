@@ -36,6 +36,7 @@ func (a *App) Init(srcListenAddr string, svcAddr string, logjamBaseUrl string, t
 			panic("[E] can't parse ice.servers.json: " + err.Error())
 		}
 	}
+	startRejoinCH := make(chan bool, 2)
 	a.conf = &models.ConfigModel{
 		LogjamBaseUrl:            logjamBaseUrl + "/auxiliary-node",
 		TargetRoom:               targetRoom,
@@ -43,6 +44,7 @@ func (a *App) Init(srcListenAddr string, svcAddr string, logjamBaseUrl string, t
 		ICEServers:               iceServers,
 		ICETCPMUXListenPort:      iceTCPMUXListenPort,
 		CustomICEHostCandidateIP: customICEHostCandidateIP,
+		StartRejoinCH:            &startRejoinCH,
 	}
 	roomRepo := repositories.NewRoomRepository(a.conf)
 	a.router = &routers.Router{}
@@ -63,23 +65,52 @@ func (a *App) Init(srcListenAddr string, svcAddr string, logjamBaseUrl string, t
 
 func (a *App) Run() {
 	go func() {
-	start:
-		buffer, _ := json.Marshal(map[string]any{"roomId": a.conf.TargetRoom, "svcAddr": a.conf.ServiceAddress})
-		body := bytes.NewReader(buffer)
-		c := &http.Client{
-			Timeout: 8 * time.Second,
-		}
-		res, err := c.Post(a.conf.LogjamBaseUrl+"/join", "application/json", body)
-		if err != nil {
-			println(err.Error())
-			time.Sleep(4 * time.Second)
-			goto start
-		}
-		if res.StatusCode > 204 {
-			resbody, _ := io.ReadAll(res.Body)
-			println("get /join "+res.Status, string(resbody))
-			time.Sleep(4 * time.Second)
-			goto start
+		*a.conf.StartRejoinCH <- true
+		for simplyJoin := range *a.conf.StartRejoinCH {
+			if simplyJoin {
+				buffer, _ := json.Marshal(map[string]any{"roomId": a.conf.TargetRoom, "svcAddr": a.conf.ServiceAddress})
+				body := bytes.NewReader(buffer)
+				c := &http.Client{
+					Timeout: 8 * time.Second,
+				}
+				res, err := c.Post(a.conf.LogjamBaseUrl+"/join", "application/json", body)
+				if err != nil {
+					println(err.Error())
+					time.Sleep(4 * time.Second)
+					*a.conf.StartRejoinCH <- true
+					continue
+				}
+				if res.StatusCode > 204 {
+					resbody, _ := io.ReadAll(res.Body)
+					println("get /join "+res.Status, string(resbody))
+					time.Sleep(4 * time.Second)
+					*a.conf.StartRejoinCH <- true
+					continue
+				}
+			} else {
+				reqModel := struct {
+					RoomId string `json:"roomId"`
+				}{
+					RoomId: a.conf.TargetRoom,
+				}
+				serializedReqBody, err := json.Marshal(reqModel)
+				if err != nil {
+					println(err.Error())
+					*a.conf.StartRejoinCH <- true
+					continue
+				}
+
+				resp, err := http.Post(a.conf.LogjamBaseUrl+"/rejoin", "application/json", bytes.NewReader(serializedReqBody))
+				if err != nil {
+					println(err.Error())
+					*a.conf.StartRejoinCH <- true
+					continue
+				}
+				if resp.StatusCode > 204 {
+					println("/rejoin", resp.Status)
+					*a.conf.StartRejoinCH <- true
+				}
+			}
 		}
 	}()
 	err := a.router.Serve(a.src)
