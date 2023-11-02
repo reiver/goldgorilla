@@ -38,6 +38,7 @@ type Room struct {
 	trackLock *sync.Mutex
 	Tracks    map[string]*Track
 	timer     *time.Ticker
+	ggId      uint64
 }
 
 type RoomRepository struct {
@@ -114,7 +115,7 @@ func (r *RoomRepository) doesPeerExists(roomId string, id uint64) bool {
 	return false
 }
 
-func (r *RoomRepository) CreatePeer(roomId string, id uint64, canPublish bool, isCaller bool) error {
+func (r *RoomRepository) CreatePeer(roomId string, id uint64, canPublish bool, isCaller bool, ggid uint64) error {
 	r.Lock()
 
 	if !r.doesRoomExists(roomId) {
@@ -124,6 +125,7 @@ func (r *RoomRepository) CreatePeer(roomId string, id uint64, canPublish bool, i
 			trackLock: &sync.Mutex{},
 			Tracks:    make(map[string]*Track),
 			timer:     time.NewTicker(3 * time.Second),
+			ggId:      ggid,
 		}
 		r.Rooms[roomId] = room
 		go func() {
@@ -164,7 +166,7 @@ func (r *RoomRepository) CreatePeer(roomId string, id uint64, canPublish bool, i
 	}
 
 	peerConn.OnICECandidate(func(ic *webrtc.ICECandidate) {
-		r.onPeerICECandidate(roomId, id, ic)
+		r.onPeerICECandidate(roomId, id, room.ggId, ic)
 	})
 	peerConn.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
 		r.Lock()
@@ -209,14 +211,17 @@ func (r *RoomRepository) CreatePeer(roomId string, id uint64, canPublish bool, i
 }
 
 func (r *RoomRepository) onCallerDisconnected(roomId string) {
-	if err := r.ResetRoom(roomId); err != nil {
+	if _, err := r.ResetRoom(roomId); err != nil {
 		println(err.Error())
 		return
 	}
-	*r.conf.StartRejoinCH <- false
+	*r.conf.StartRejoinCH <- models.RejoinMode{
+		SimplyJoin: false,
+		RoomId:     roomId,
+	}
 }
 
-func (r *RoomRepository) onPeerICECandidate(roomId string, id uint64, ic *webrtc.ICECandidate) {
+func (r *RoomRepository) onPeerICECandidate(roomId string, id, ggid uint64, ic *webrtc.ICECandidate) {
 	if ic == nil {
 		return
 	}
@@ -225,6 +230,7 @@ func (r *RoomRepository) onPeerICECandidate(roomId string, id uint64, ic *webrtc
 			RoomId: roomId,
 			ID:     id,
 		},
+		GGID:         ggid,
 		ICECandidate: ic.ToJSON(),
 	}
 	serializedReqBody, err := json.Marshal(reqModel)
@@ -518,14 +524,15 @@ func (r *RoomRepository) ClosePeer(roomId string, id uint64) error {
 	return peer.Conn.Close()
 }
 
-func (r *RoomRepository) ResetRoom(roomId string) error {
+func (r *RoomRepository) ResetRoom(roomId string) (uint64, error) {
 	r.Lock()
 	defer r.Unlock()
 	if !r.doesRoomExists(roomId) {
-		return nil
+		return 0, nil
 	}
 	room := r.Rooms[roomId]
 	room.Lock()
+	ggid := room.ggId
 	room.timer.Stop()
 	for _, peer := range room.Peers {
 		go func(conn *webrtc.PeerConnection) {
@@ -534,7 +541,7 @@ func (r *RoomRepository) ResetRoom(roomId string) error {
 	}
 	room.Unlock()
 	delete(r.Rooms, roomId)
-	return nil
+	return ggid, nil
 }
 
 func (r *RoomRepository) offerPeer(peer *Peer, roomId string) error {
@@ -548,7 +555,9 @@ func (r *RoomRepository) offerPeer(peer *Peer, roomId string) error {
 	if err != nil {
 		return err
 	}
+	ggid := r.GetRoomGGID(roomId)
 	reqModel := dto.SetSDPReqModel{
+		GGID: *ggid,
 		PeerDTO: dto.PeerDTO{
 			RoomId: roomId,
 			ID:     peer.ID,
@@ -567,4 +576,14 @@ func (r *RoomRepository) offerPeer(peer *Peer, roomId string) error {
 		return errors.New("POST {logjambaseurl}/offer : " + res.Status)
 	}
 	return nil
+}
+
+func (r *RoomRepository) GetRoomGGID(roomId string) *uint64 {
+	r.Lock()
+	defer r.Unlock()
+	if !r.doesRoomExists(roomId) {
+		return nil
+	}
+	gid := r.Rooms[roomId].ggId
+	return &gid
 }

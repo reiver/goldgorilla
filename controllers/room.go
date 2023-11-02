@@ -36,7 +36,7 @@ func (c *RoomController) CreatePeer(ctx *gin.Context) {
 		c.helper.ResponseUnprocessableEntity(ctx)
 		return
 	}
-	err := c.repo.CreatePeer(reqModel.RoomId, reqModel.ID, reqModel.CanPublish, reqModel.IsCaller)
+	err := c.repo.CreatePeer(reqModel.RoomId, reqModel.ID, reqModel.CanPublish, reqModel.IsCaller, reqModel.GGID)
 	if c.helper.HandleIfErr(ctx, err, nil) {
 		return
 	}
@@ -88,12 +88,14 @@ func (c *RoomController) Offer(ctx *gin.Context) {
 	}
 	c.helper.Response(ctx, struct{}{}, http.StatusNoContent)
 	{
+		ggid := c.repo.GetRoomGGID(reqModel.RoomId)
 		buffer, err := json.Marshal(dto.SetSDPReqModel{
 			PeerDTO: dto.PeerDTO{
 				RoomId: reqModel.RoomId,
 				ID:     reqModel.ID,
 			},
-			SDP: *answer,
+			GGID: *ggid,
+			SDP:  *answer,
 		})
 		if err != nil {
 			println(err.Error())
@@ -165,25 +167,50 @@ func (c *RoomController) ResetRoom(ctx *gin.Context) {
 			return
 		}
 	}
-	err := c.repo.ResetRoom(roomId)
+	ggid, err := c.repo.ResetRoom(roomId)
 	if c.helper.HandleIfErr(ctx, err, nil) {
 		return
 	}
 
-	c.helper.Response(ctx, nil, http.StatusNoContent)
+	c.helper.Response(ctx, struct {
+		GGID uint64 `json:"ggid"`
+	}{
+		GGID: ggid,
+	}, http.StatusOK)
 }
 
 func (c *RoomController) Start(ctx *gin.Context) {
-	buffer, _ := json.Marshal(map[string]any{"roomId": c.conf.TargetRoom, "svcAddr": c.conf.ServiceAddress})
+	reqModel := struct {
+		RoomId string `json:"roomId"`
+	}{}
+	if err := ctx.ShouldBindJSON(&reqModel); err != nil {
+		c.helper.ResponseBadReq(ctx)
+		return
+	}
+	buffer, _ := json.Marshal(map[string]any{"roomId": reqModel.RoomId})
 	body := bytes.NewReader(buffer)
 	res, err := http.Post(c.conf.LogjamBaseUrl+"/join", "application/json", body)
 	if err != nil {
 		println(err.Error())
 		time.Sleep(4 * time.Second)
 	}
-	if res != nil && res.StatusCode > 204 {
-		resbody, _ := io.ReadAll(res.Body)
-		println("get /join "+res.Status, string(resbody))
+	if res != nil {
+		if res.StatusCode > 204 {
+			resbody, _ := io.ReadAll(res.Body)
+			println("get /join "+res.Status, string(resbody))
+		} else {
+			resbody, _ := io.ReadAll(res.Body)
+			println(string(resbody))
+			respData := make(map[string]any)
+			if len(resbody) > 2 {
+				err := json.Unmarshal(resbody, &respData)
+				if err != nil {
+					println(err.Error())
+					c.helper.Response(ctx, nil, http.StatusBadRequest)
+					return
+				}
+			}
+		}
 	}
 	c.helper.Response(ctx, nil, http.StatusNoContent)
 }
