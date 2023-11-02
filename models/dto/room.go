@@ -13,12 +13,14 @@ func (model *PeerDTO) Validate() bool {
 
 type CreatePeerReqModel struct {
 	PeerDTO
-	CanPublish bool `json:"canPublish"`
-	IsCaller   bool `json:"isCaller"`
+	GGID       uint64 `json:"ggid"`
+	CanPublish bool   `json:"canPublish"`
+	IsCaller   bool   `json:"isCaller"`
 }
 
 type AddPeerICECandidateReqModel struct {
 	PeerDTO
+	GGID         uint64                  `json:"ggid"`
 	ICECandidate webrtc.ICECandidateInit `json:"iceCandidate"`
 }
 
@@ -28,7 +30,8 @@ func (model *AddPeerICECandidateReqModel) Validate() bool {
 
 type SetSDPReqModel struct {
 	PeerDTO
-	SDP webrtc.SessionDescription `json:"sdp"`
+	GGID uint64                    `json:"ggid"`
+	SDP  webrtc.SessionDescription `json:"sdp"`
 }
 
 func (model *SetSDPReqModel) Validate() bool {
