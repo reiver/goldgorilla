@@ -556,6 +556,11 @@ func (r *RoomRepository) offerPeer(peer *Peer, roomId string) error {
 		return err
 	}
 	ggid := r.GetRoomGGID(roomId)
+	if ggid == nil {
+		println("[PC] ok not negotiating with peer", peer.ID, "(room is deleted)")
+		peer.HandshakeLock.Unlock()
+		return errors.New("room doesnt have ggid")
+	}
 	reqModel := dto.SetSDPReqModel{
 		GGID: *ggid,
 		PeerDTO: dto.PeerDTO{
