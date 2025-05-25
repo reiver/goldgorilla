@@ -10,8 +10,8 @@ import (
 	"github.com/pion/webrtc/v3"
 	"net"
 	"net/http"
-	"sourcecode.social/greatape/goldgorilla/models"
-	"sourcecode.social/greatape/goldgorilla/models/dto"
+	"github.com/greatape/goldgorilla/models"
+	"github.com/greatape/goldgorilla/models/dto"
 	"sync"
 	"time"
 )

@@ -2,7 +2,7 @@ package routers
 
 import (
 	"github.com/gin-gonic/gin"
-	"sourcecode.social/greatape/goldgorilla/controllers"
+	"github.com/greatape/goldgorilla/controllers"
 )
 
 type Router struct {

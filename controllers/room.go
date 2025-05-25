@@ -6,9 +6,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"io"
 	"net/http"
-	"sourcecode.social/greatape/goldgorilla/models"
-	"sourcecode.social/greatape/goldgorilla/models/dto"
-	"sourcecode.social/greatape/goldgorilla/repositories"
+	"github.com/greatape/goldgorilla/models"
+	"github.com/greatape/goldgorilla/models/dto"
+	"github.com/greatape/goldgorilla/repositories"
 	"time"
 )
 
