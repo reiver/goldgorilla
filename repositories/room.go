@@ -5,15 +5,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
+	"net/http"
+	"sync"
+	"time"
+
 	"github.com/pion/interceptor"
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v3"
-	"net"
-	"net/http"
 	"sourcecode.social/greatape/goldgorilla/models"
 	"sourcecode.social/greatape/goldgorilla/models/dto"
-	"sync"
-	"time"
 )
 
 type Track struct {
@@ -115,8 +116,9 @@ func (r *RoomRepository) doesPeerExists(roomId string, id uint64) bool {
 	return false
 }
 
-func (r *RoomRepository) CreatePeer(roomId string, id uint64, canPublish bool, isCaller bool, ggid uint64) error {
+func (r *RoomRepository) CreateRoom(roomId string, ggid uint64) {
 	r.Lock()
+	defer r.Unlock()
 
 	if !r.doesRoomExists(roomId) {
 		room := &Room{
@@ -154,6 +156,10 @@ func (r *RoomRepository) CreatePeer(roomId string, id uint64, canPublish bool, i
 			}
 		}()
 	}
+}
+
+func (r *RoomRepository) CreatePeer(roomId string, id uint64, canPublish bool, isCaller bool, ggid uint64) error {
+	r.Lock()
 
 	room := r.Rooms[roomId]
 	r.Unlock()
@@ -556,6 +562,9 @@ func (r *RoomRepository) offerPeer(peer *Peer, roomId string) error {
 		return err
 	}
 	ggid := r.GetRoomGGID(roomId)
+	if ggid == nil {
+		return errors.New("room doesnt have a ggid ( meeting is done or not started yet )")
+	}
 	reqModel := dto.SetSDPReqModel{
 		GGID: *ggid,
 		PeerDTO: dto.PeerDTO{

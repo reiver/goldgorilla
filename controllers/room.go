@@ -3,13 +3,14 @@ package controllers
 import (
 	"bytes"
 	"encoding/json"
-	"github.com/gin-gonic/gin"
 	"io"
 	"net/http"
+	"time"
+
+	"github.com/gin-gonic/gin"
 	"sourcecode.social/greatape/goldgorilla/models"
 	"sourcecode.social/greatape/goldgorilla/models/dto"
 	"sourcecode.social/greatape/goldgorilla/repositories"
-	"time"
 )
 
 type RoomController struct {
@@ -201,13 +202,18 @@ func (c *RoomController) Start(ctx *gin.Context) {
 		} else {
 			resbody, _ := io.ReadAll(res.Body)
 			println(string(resbody))
-			respData := make(map[string]any)
+			respData := struct {
+				ID uint64 `json:"id"`
+			}{}
 			if len(resbody) > 2 {
 				err := json.Unmarshal(resbody, &respData)
 				if err != nil {
 					println(err.Error())
 					c.helper.Response(ctx, nil, http.StatusBadRequest)
 					return
+				}
+				if respData.ID > 0 {
+					c.repo.CreateRoom(reqModel.RoomId, respData.ID)
 				}
 			}
 		}
@@ -216,8 +222,9 @@ func (c *RoomController) Start(ctx *gin.Context) {
 }
 
 func (c *RoomController) HealthCheck(ctx *gin.Context) {
-	if len(ctx.Query("roomId")) > 0 {
-		if !c.repo.DoesRoomExists(ctx.Query("roomId")) {
+	roomId := ctx.Query("roomId")
+	if len(roomId) > 0 {
+		if !c.repo.DoesRoomExists(roomId) {
 			ctx.Status(http.StatusNotFound)
 			return
 		}
