@@ -217,14 +217,15 @@ func (r *RoomRepository) CreatePeer(roomId string, id uint64, canPublish bool, i
 }
 
 func (r *RoomRepository) onCallerDisconnected(roomId string) {
-	if _, err := r.ResetRoom(roomId); err != nil {
+	/*if _, err := r.ResetRoom(roomId); err != nil {
 		println(err.Error())
 		return
 	}
 	*r.conf.StartRejoinCH <- models.RejoinMode{
 		SimplyJoin: false,
 		RoomId:     roomId,
-	}
+	}*/
+	//not doing it for now
 }
 
 func (r *RoomRepository) onPeerICECandidate(roomId string, id, ggid uint64, ic *webrtc.ICECandidate) {
@@ -472,7 +473,7 @@ func (r *RoomRepository) SetPeerOffer(roomId string, id uint64, offer webrtc.Ses
 	room.Unlock()
 
 	if !peer.IsCaller {
-		return nil, models.NewError("only caller can offer", 403, nil)
+		// return nil, models.NewError("only caller can offer", 403, nil)
 	}
 	peer.HandshakeLock.Lock()
 	defer peer.HandshakeLock.Unlock()
