@@ -37,7 +37,7 @@ func (c *RoomController) CreatePeer(ctx *gin.Context) {
 		c.helper.ResponseUnprocessableEntity(ctx)
 		return
 	}
-	err := c.repo.CreatePeer(reqModel.RoomId, reqModel.ID, reqModel.CanPublish, reqModel.IsCaller, reqModel.GGID)
+	err := c.repo.CreatePeer(reqModel.RoomId, reqModel.ID, reqModel.CanPublish, reqModel.IsCaller, reqModel.GGID, reqModel.ConnDirection)
 	if c.helper.HandleIfErr(ctx, err, nil) {
 		return
 	}
@@ -56,7 +56,7 @@ func (c *RoomController) AddICECandidate(ctx *gin.Context) {
 	}
 	tryCounter := 0
 start:
-	err := c.repo.AddPeerIceCandidate(reqModel.RoomId, reqModel.ID, reqModel.ICECandidate)
+	err := c.repo.AddPeerIceCandidate(reqModel.RoomId, reqModel.ID, reqModel.ICECandidate, reqModel.ConnDirection)
 	if err != nil {
 		if tryCounter < 4 {
 			time.Sleep(1 * time.Second)
@@ -81,8 +81,8 @@ func (c *RoomController) Offer(ctx *gin.Context) {
 		c.helper.ResponseUnprocessableEntity(ctx)
 		return
 	}
-	println("offer from", reqModel.ID)
-	answer, err := c.repo.SetPeerOffer(reqModel.RoomId, reqModel.ID, reqModel.SDP)
+	println("[offer] from", reqModel.ID)
+	answer, err := c.repo.SetPeerOffer(reqModel.RoomId, reqModel.ID, reqModel.SDP, reqModel.ConnDirection)
 	if c.helper.HandleIfErr(ctx, err, nil) {
 		println(err.Error())
 		return
@@ -124,8 +124,8 @@ func (c *RoomController) Answer(ctx *gin.Context) {
 		c.helper.ResponseUnprocessableEntity(ctx)
 		return
 	}
-	println("answer from", reqModel.ID)
-	err := c.repo.SetPeerAnswer(reqModel.RoomId, reqModel.ID, reqModel.SDP)
+	println("[answer] from", reqModel.ID)
+	err := c.repo.SetPeerAnswer(reqModel.RoomId, reqModel.ID, reqModel.SDP, reqModel.ConnDirection)
 	if c.helper.HandleIfErr(ctx, err, nil) {
 		println(err.Error())
 		return
