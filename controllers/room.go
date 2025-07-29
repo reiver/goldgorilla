@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"sourcecode.social/greatape/goldgorilla/models"
-	"sourcecode.social/greatape/goldgorilla/models/dto"
-	"sourcecode.social/greatape/goldgorilla/repositories"
+	"github.com/reiver/goldgorilla/models"
+	"github.com/reiver/goldgorilla/models/dto"
+	"github.com/reiver/goldgorilla/repositories"
 )
 
 type RoomController struct {

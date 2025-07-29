@@ -12,10 +12,10 @@ import (
 	"time"
 
 	"github.com/pion/webrtc/v3"
-	"sourcecode.social/greatape/goldgorilla/controllers"
-	"sourcecode.social/greatape/goldgorilla/models"
-	"sourcecode.social/greatape/goldgorilla/repositories"
-	"sourcecode.social/greatape/goldgorilla/routers"
+	"github.com/reiver/goldgorilla/controllers"
+	"github.com/reiver/goldgorilla/models"
+	"github.com/reiver/goldgorilla/repositories"
+	"github.com/reiver/goldgorilla/routers"
 )
 
 type App struct {

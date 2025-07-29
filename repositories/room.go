@@ -14,8 +14,8 @@ import (
 	"github.com/pion/interceptor"
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v3"
-	"sourcecode.social/greatape/goldgorilla/models"
-	"sourcecode.social/greatape/goldgorilla/models/dto"
+	"github.com/reiver/goldgorilla/models"
+	"github.com/reiver/goldgorilla/models/dto"
 )
 
 type Track struct {
@@ -628,12 +628,12 @@ func (r *RoomRepository) offerPeer(peer *Peer, roomId string) error {
 
 	offer, err := targetConn.CreateOffer(nil)
 	if err != nil {
-    peer.HandshakeLock.Unlock()
+		peer.HandshakeLock.Unlock()
 		return err
 	}
 	err = targetConn.SetLocalDescription(offer)
 	if err != nil {
-    peer.HandshakeLock.Unlock()
+		peer.HandshakeLock.Unlock()
 		return err
 	}
 	ggid := r.GetRoomGGID(roomId)
