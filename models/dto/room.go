@@ -40,9 +40,8 @@ func (model *AddPeerICECandidateReqModel) Validate() bool {
 
 type SetSDPReqModel struct {
 	PeerDTO
-	GGID          uint64                    `json:"ggid"`
-	SDP           webrtc.SessionDescription `json:"sdp"`
-	ConnDirection ConnectionDirection       `json:"connectionDirection"`
+	GGID uint64                    `json:"ggid"`
+	SDP  webrtc.SessionDescription `json:"sdp"`
 }
 
 func (model *SetSDPReqModel) Validate() bool {

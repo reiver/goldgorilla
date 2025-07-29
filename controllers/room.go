@@ -82,7 +82,7 @@ func (c *RoomController) Offer(ctx *gin.Context) {
 		return
 	}
 	println("[offer] from", reqModel.ID)
-	answer, err := c.repo.SetPeerOffer(reqModel.RoomId, reqModel.ID, reqModel.SDP, reqModel.ConnDirection)
+	answer, err := c.repo.SetPeerOffer(reqModel.RoomId, reqModel.ID, reqModel.SDP)
 	if c.helper.HandleIfErr(ctx, err, nil) {
 		println(err.Error())
 		return
@@ -125,7 +125,7 @@ func (c *RoomController) Answer(ctx *gin.Context) {
 		return
 	}
 	println("[answer] from", reqModel.ID)
-	err := c.repo.SetPeerAnswer(reqModel.RoomId, reqModel.ID, reqModel.SDP, reqModel.ConnDirection)
+	err := c.repo.SetPeerAnswer(reqModel.RoomId, reqModel.ID, reqModel.SDP)
 	if c.helper.HandleIfErr(ctx, err, nil) {
 		println(err.Error())
 		return

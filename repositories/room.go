@@ -444,7 +444,7 @@ func (r *RoomRepository) updatePCTracks(roomId string) {
 		if renegotiate {
 			go func(p *Peer, rid string) {
 
-				err := r.offerPeer(p, rid, dto.CDRecv)
+				err := r.offerPeer(p, rid)
 				if err != nil {
 					println(`[E]`, err.Error())
 					return
@@ -484,7 +484,7 @@ func (r *RoomRepository) AddPeerIceCandidate(roomId string, id uint64, ic webrtc
 	return nil
 }
 
-func (r *RoomRepository) SetPeerAnswer(roomId string, id uint64, answer webrtc.SessionDescription, connDirection dto.ConnectionDirection) error {
+func (r *RoomRepository) SetPeerAnswer(roomId string, id uint64, answer webrtc.SessionDescription) error {
 	r.Lock()
 	if !r.doesRoomExists(roomId) {
 		r.Unlock()
@@ -499,12 +499,7 @@ func (r *RoomRepository) SetPeerAnswer(roomId string, id uint64, answer webrtc.S
 	}
 	peer := room.Peers[id]
 	room.Unlock()
-	var err error
-	if connDirection == dto.CDSend {
-		err = peer.SendConn.SetRemoteDescription(answer)
-	} else {
-		err = peer.RecvConn.SetRemoteDescription(answer)
-	}
+	err := peer.RecvConn.SetRemoteDescription(answer)
 	if err != nil {
 		return models.NewError(err.Error(), 500, models.MessageResponse{Message: err.Error()})
 	}
@@ -512,7 +507,7 @@ func (r *RoomRepository) SetPeerAnswer(roomId string, id uint64, answer webrtc.S
 	// println("[lock_answer] unlocked handshake for peer:", peer.ID)
 	return nil
 }
-func (r *RoomRepository) SetPeerOffer(roomId string, id uint64, offer webrtc.SessionDescription, connDirection dto.ConnectionDirection) (sdpAnswer *webrtc.SessionDescription, err error) {
+func (r *RoomRepository) SetPeerOffer(roomId string, id uint64, offer webrtc.SessionDescription) (sdpAnswer *webrtc.SessionDescription, err error) {
 	r.Lock()
 	if !r.doesRoomExists(roomId) {
 		r.Unlock()
@@ -539,12 +534,8 @@ func (r *RoomRepository) SetPeerOffer(roomId string, id uint64, offer webrtc.Ses
 		peer.HandshakeLock.Unlock()
 		// println("[lock_offer] unlocked handshake for peer:", peer.ID)
 	}()
-	var targetConn *webrtc.PeerConnection
-	if connDirection == dto.CDSend {
-		targetConn = peer.SendConn
-	} else {
-		targetConn = peer.RecvConn
-	}
+	targetConn := peer.SendConn
+
 	// defer peer.HandshakeLock.Unlock()
 	err = targetConn.SetRemoteDescription(offer)
 	if err != nil {
@@ -629,16 +620,12 @@ func (r *RoomRepository) ResetRoom(roomId string) (uint64, error) {
 	return ggid, nil
 }
 
-func (r *RoomRepository) offerPeer(peer *Peer, roomId string, connDirection dto.ConnectionDirection) error {
+func (r *RoomRepository) offerPeer(peer *Peer, roomId string) error {
 	// println("[lock_op] locking handshake for peer:", peer.ID)
 	peer.HandshakeLock.Lock()
 	println("[PC] negotiating with peer", peer.ID)
-	var targetConn *webrtc.PeerConnection
-	if connDirection == dto.CDSend {
-		targetConn = peer.SendConn
-	} else {
-		targetConn = peer.RecvConn
-	}
+	targetConn := peer.RecvConn
+
 	offer, err := targetConn.CreateOffer(nil)
 	if err != nil {
 		return err
@@ -657,8 +644,7 @@ func (r *RoomRepository) offerPeer(peer *Peer, roomId string, connDirection dto.
 			RoomId: roomId,
 			ID:     peer.ID,
 		},
-		SDP:           offer,
-		ConnDirection: connDirection,
+		SDP: offer,
 	}
 	bodyJson, err := json.Marshal(reqModel)
 	if err != nil {
