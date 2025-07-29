@@ -2,7 +2,7 @@ package controllers
 
 import (
 	"github.com/gin-gonic/gin"
-	"sourcecode.social/greatape/goldgorilla/models"
+	"github.com/greatape/goldgorilla/models"
 )
 
 type ResponseHelper struct {

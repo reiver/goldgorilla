@@ -628,15 +628,19 @@ func (r *RoomRepository) offerPeer(peer *Peer, roomId string) error {
 
 	offer, err := targetConn.CreateOffer(nil)
 	if err != nil {
+    peer.HandshakeLock.Unlock()
 		return err
 	}
 	err = targetConn.SetLocalDescription(offer)
 	if err != nil {
+    peer.HandshakeLock.Unlock()
 		return err
 	}
 	ggid := r.GetRoomGGID(roomId)
 	if ggid == nil {
-		return errors.New("room doesnt have a ggid ( meeting is done or not started yet )")
+		println("[PC] ok not negotiating with peer", peer.ID, "(room is deleted)")
+		peer.HandshakeLock.Unlock()
+		return errors.New("room doesnt have ggid")
 	}
 	reqModel := dto.SetSDPReqModel{
 		GGID: *ggid,

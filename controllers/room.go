@@ -90,6 +90,10 @@ func (c *RoomController) Offer(ctx *gin.Context) {
 	c.helper.Response(ctx, struct{}{}, http.StatusNoContent)
 	{
 		ggid := c.repo.GetRoomGGID(reqModel.RoomId)
+		if ggid == nil {
+			println("ggid is nil, not answering for offer")
+			return
+		}
 		buffer, err := json.Marshal(dto.SetSDPReqModel{
 			PeerDTO: dto.PeerDTO{
 				RoomId: reqModel.RoomId,

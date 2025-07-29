@@ -1,4 +1,4 @@
-module sourcecode.social/greatape/goldgorilla
+module github.com/greatape/goldgorilla
 
 go 1.20
 
