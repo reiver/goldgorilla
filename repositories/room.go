@@ -535,6 +535,9 @@ func (r *RoomRepository) SetPeerOffer(roomId string, id uint64, offer webrtc.Ses
 		// println("[lock_offer] unlocked handshake for peer:", peer.ID)
 	}()
 	targetConn := peer.SendConn
+	if targetConn == nil {
+		return nil, errors.New("targetConn is nil")
+	}
 
 	// defer peer.HandshakeLock.Unlock()
 	err = targetConn.SetRemoteDescription(offer)

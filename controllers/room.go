@@ -59,7 +59,7 @@ start:
 	err := c.repo.AddPeerIceCandidate(reqModel.RoomId, reqModel.ID, reqModel.ICECandidate, reqModel.ConnDirection)
 	if err != nil {
 		if tryCounter < 4 {
-			time.Sleep(1 * time.Second)
+			time.Sleep(time.Duration(tryCounter) * time.Second)
 			tryCounter++
 			goto start
 		}
