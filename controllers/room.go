@@ -3,13 +3,14 @@ package controllers
 import (
 	"bytes"
 	"encoding/json"
-	"github.com/gin-gonic/gin"
 	"io"
 	"net/http"
-	"github.com/greatape/goldgorilla/models"
-	"github.com/greatape/goldgorilla/models/dto"
-	"github.com/greatape/goldgorilla/repositories"
 	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/reiver/goldgorilla/models"
+	"github.com/reiver/goldgorilla/models/dto"
+	"github.com/reiver/goldgorilla/repositories"
 )
 
 type RoomController struct {
@@ -36,7 +37,7 @@ func (c *RoomController) CreatePeer(ctx *gin.Context) {
 		c.helper.ResponseUnprocessableEntity(ctx)
 		return
 	}
-	err := c.repo.CreatePeer(reqModel.RoomId, reqModel.ID, reqModel.CanPublish, reqModel.IsCaller, reqModel.GGID)
+	err := c.repo.CreatePeer(reqModel.RoomId, reqModel.ID, reqModel.CanPublish, reqModel.IsCaller, reqModel.GGID, reqModel.ConnDirection)
 	if c.helper.HandleIfErr(ctx, err, nil) {
 		return
 	}
@@ -55,10 +56,10 @@ func (c *RoomController) AddICECandidate(ctx *gin.Context) {
 	}
 	tryCounter := 0
 start:
-	err := c.repo.AddPeerIceCandidate(reqModel.RoomId, reqModel.ID, reqModel.ICECandidate)
+	err := c.repo.AddPeerIceCandidate(reqModel.RoomId, reqModel.ID, reqModel.ICECandidate, reqModel.ConnDirection)
 	if err != nil {
 		if tryCounter < 4 {
-			time.Sleep(1 * time.Second)
+			time.Sleep(time.Duration(tryCounter) * time.Second)
 			tryCounter++
 			goto start
 		}
@@ -80,7 +81,7 @@ func (c *RoomController) Offer(ctx *gin.Context) {
 		c.helper.ResponseUnprocessableEntity(ctx)
 		return
 	}
-	println("offer from", reqModel.ID)
+	println("[offer] from", reqModel.ID)
 	answer, err := c.repo.SetPeerOffer(reqModel.RoomId, reqModel.ID, reqModel.SDP)
 	if c.helper.HandleIfErr(ctx, err, nil) {
 		println(err.Error())
@@ -127,7 +128,7 @@ func (c *RoomController) Answer(ctx *gin.Context) {
 		c.helper.ResponseUnprocessableEntity(ctx)
 		return
 	}
-	println("answer from", reqModel.ID)
+	println("[answer] from", reqModel.ID)
 	err := c.repo.SetPeerAnswer(reqModel.RoomId, reqModel.ID, reqModel.SDP)
 	if c.helper.HandleIfErr(ctx, err, nil) {
 		println(err.Error())
@@ -205,13 +206,18 @@ func (c *RoomController) Start(ctx *gin.Context) {
 		} else {
 			resbody, _ := io.ReadAll(res.Body)
 			println(string(resbody))
-			respData := make(map[string]any)
+			respData := struct {
+				ID uint64 `json:"id"`
+			}{}
 			if len(resbody) > 2 {
 				err := json.Unmarshal(resbody, &respData)
 				if err != nil {
 					println(err.Error())
 					c.helper.Response(ctx, nil, http.StatusBadRequest)
 					return
+				}
+				if respData.ID > 0 {
+					c.repo.CreateRoom(reqModel.RoomId, respData.ID)
 				}
 			}
 		}
@@ -220,8 +226,9 @@ func (c *RoomController) Start(ctx *gin.Context) {
 }
 
 func (c *RoomController) HealthCheck(ctx *gin.Context) {
-	if len(ctx.Query("roomId")) > 0 {
-		if !c.repo.DoesRoomExists(ctx.Query("roomId")) {
+	roomId := ctx.Query("roomId")
+	if len(roomId) > 0 {
+		if !c.repo.DoesRoomExists(roomId) {
 			ctx.Status(http.StatusNotFound)
 			return
 		}

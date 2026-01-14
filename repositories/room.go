@@ -5,15 +5,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
+	"net/http"
+	"sync"
+	"sync/atomic"
+	"time"
+
 	"github.com/pion/interceptor"
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v3"
-	"net"
-	"net/http"
-	"github.com/greatape/goldgorilla/models"
-	"github.com/greatape/goldgorilla/models/dto"
-	"sync"
-	"time"
+	"github.com/reiver/goldgorilla/models"
+	"github.com/reiver/goldgorilla/models/dto"
 )
 
 type Track struct {
@@ -23,7 +25,8 @@ type Track struct {
 
 type Peer struct {
 	ID                     uint64
-	Conn                   *webrtc.PeerConnection
+	RecvConn               *webrtc.PeerConnection
+	SendConn               *webrtc.PeerConnection
 	CanPublish             bool
 	IsCaller               bool
 	HandshakeLock          *sync.Mutex
@@ -115,8 +118,9 @@ func (r *RoomRepository) doesPeerExists(roomId string, id uint64) bool {
 	return false
 }
 
-func (r *RoomRepository) CreatePeer(roomId string, id uint64, canPublish bool, isCaller bool, ggid uint64) error {
+func (r *RoomRepository) CreateRoom(roomId string, ggid uint64) {
 	r.Lock()
+	defer r.Unlock()
 
 	if !r.doesRoomExists(roomId) {
 		room := &Room{
@@ -132,13 +136,16 @@ func (r *RoomRepository) CreatePeer(roomId string, id uint64, canPublish bool, i
 			for range room.timer.C {
 				room.Lock()
 				for _, peer := range room.Peers {
-					for _, receiver := range peer.Conn.GetReceivers() {
+					if peer.SendConn == nil {
+						continue
+					}
+					for _, receiver := range peer.SendConn.GetReceivers() {
 						if receiver.Track() == nil {
 							continue
 						}
-
 						go func(peerConn *webrtc.PeerConnection, recv *webrtc.RTPReceiver) {
-							err := peerConn.WriteRTCP([]rtcp.Packet{
+							// err := peerConn.WriteRTCP([]rtcp.Packet{
+							_, err := recv.Transport().WriteRTCP([]rtcp.Packet{
 								&rtcp.PictureLossIndication{
 									MediaSSRC: uint32(recv.Track().SSRC()),
 								},
@@ -146,14 +153,17 @@ func (r *RoomRepository) CreatePeer(roomId string, id uint64, canPublish bool, i
 							if err != nil {
 								println(`[E] [rtcp][PLI] `, err.Error())
 							}
-						}(peer.Conn, receiver)
+						}(peer.RecvConn, receiver)
 					}
-
 				}
 				room.Unlock()
 			}
 		}()
 	}
+}
+
+func (r *RoomRepository) CreatePeer(roomId string, id uint64, canPublish bool, isCaller bool, ggid uint64, connDirection dto.ConnectionDirection) error {
+	r.Lock()
 
 	room := r.Rooms[roomId]
 	r.Unlock()
@@ -166,7 +176,7 @@ func (r *RoomRepository) CreatePeer(roomId string, id uint64, canPublish bool, i
 	}
 
 	peerConn.OnICECandidate(func(ic *webrtc.ICECandidate) {
-		r.onPeerICECandidate(roomId, id, room.ggId, ic)
+		r.onPeerICECandidate(roomId, id, room.ggId, ic, connDirection)
 	})
 	peerConn.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
 		r.Lock()
@@ -180,7 +190,7 @@ func (r *RoomRepository) CreatePeer(roomId string, id uint64, canPublish bool, i
 		defer room.Unlock()
 		peer, stillThere := room.Peers[id]
 
-		r.onPeerConnectionStateChange(room, peer, state)
+		r.onPeerConnectionStateChange(room, peer, state, connDirection)
 		{
 			if state == webrtc.PeerConnectionStateClosed && isCaller {
 				if stillThere && peer.triggeredReconnectOnce {
@@ -190,38 +200,62 @@ func (r *RoomRepository) CreatePeer(roomId string, id uint64, canPublish bool, i
 			}
 		}
 	})
-	peerConn.OnTrack(func(remote *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
-		r.onPeerTrack(roomId, id, remote, receiver)
-	})
+
+	if connDirection == dto.CDSend {
+		var audioReady, videoReady atomic.Bool
+		peerConn.OnTrack(func(remote *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
+			switch remote.Kind() {
+			case webrtc.RTPCodecTypeAudio:
+				audioReady.Store(true)
+			case webrtc.RTPCodecTypeVideo:
+				videoReady.Store(true)
+			}
+
+			if audioReady.Load() && videoReady.Load() {
+				r.onPeerTrack(roomId, id, remote, receiver, false)
+			} else {
+				r.onPeerTrack(roomId, id, remote, receiver, true)
+			}
+		})
+	}
 	/*peerConn.OnNegotiationNeeded(func() {
 		println("[PC] negotiating with peer", id)
 		r.offerPeer(peerConn,roomId,id)
 	})*/
 	room.Lock()
 	defer room.Unlock()
-	room.Peers[id] = &Peer{
-		ID:            id,
-		Conn:          peerConn,
-		HandshakeLock: &sync.Mutex{},
-		CanPublish:    canPublish,
-		IsCaller:      isCaller,
+	if _, exists := room.Peers[id]; !exists {
+		room.Peers[id] = &Peer{
+			ID: id,
+			// Conn:          peerConn,
+			HandshakeLock: &sync.Mutex{},
+			CanPublish:    canPublish,
+			IsCaller:      isCaller,
+		}
 	}
+	if connDirection == dto.CDSend {
+		room.Peers[id].SendConn = peerConn
+	} else {
+		room.Peers[id].RecvConn = peerConn
+	}
+
 	go r.updatePCTracks(roomId)
 	return nil
 }
 
 func (r *RoomRepository) onCallerDisconnected(roomId string) {
-	if _, err := r.ResetRoom(roomId); err != nil {
+	/*if _, err := r.ResetRoom(roomId); err != nil {
 		println(err.Error())
 		return
 	}
 	*r.conf.StartRejoinCH <- models.RejoinMode{
 		SimplyJoin: false,
 		RoomId:     roomId,
-	}
+	}*/
+	//not doing it for now
 }
 
-func (r *RoomRepository) onPeerICECandidate(roomId string, id, ggid uint64, ic *webrtc.ICECandidate) {
+func (r *RoomRepository) onPeerICECandidate(roomId string, id, ggid uint64, ic *webrtc.ICECandidate, connDirection dto.ConnectionDirection) {
 	if ic == nil {
 		return
 	}
@@ -230,8 +264,9 @@ func (r *RoomRepository) onPeerICECandidate(roomId string, id, ggid uint64, ic *
 			RoomId: roomId,
 			ID:     id,
 		},
-		GGID:         ggid,
-		ICECandidate: ic.ToJSON(),
+		GGID:          ggid,
+		ICECandidate:  ic.ToJSON(),
+		ConnDirection: connDirection,
 	}
 	serializedReqBody, err := json.Marshal(reqModel)
 	if err != nil {
@@ -249,7 +284,7 @@ func (r *RoomRepository) onPeerICECandidate(roomId string, id, ggid uint64, ic *
 	}
 }
 
-func (r *RoomRepository) onPeerConnectionStateChange(room *Room, peer *Peer, newState webrtc.PeerConnectionState) {
+func (r *RoomRepository) onPeerConnectionStateChange(room *Room, peer *Peer, newState webrtc.PeerConnectionState, connDirection dto.ConnectionDirection) {
 	if peer == nil {
 		return
 	}
@@ -258,16 +293,22 @@ func (r *RoomRepository) onPeerConnectionStateChange(room *Room, peer *Peer, new
 	case webrtc.PeerConnectionStateDisconnected:
 		fallthrough
 	case webrtc.PeerConnectionStateFailed:
-		if err := peer.Conn.Close(); err != nil {
-			println(err.Error())
+		if connDirection == dto.CDSend {
+			if err := peer.SendConn.Close(); err != nil {
+				println(err.Error())
+			}
+		} else {
+			if err := peer.RecvConn.Close(); err != nil {
+				println(err.Error())
+			}
 		}
 	case webrtc.PeerConnectionStateClosed:
 		delete(room.Peers, peer.ID)
 	}
 }
 
-func (r *RoomRepository) onPeerTrack(roomId string, id uint64, remote *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
-	fmt.Println("got a track!", remote.ID(), remote.StreamID(), remote.Kind().String())
+func (r *RoomRepository) onPeerTrack(roomId string, id uint64, remote *webrtc.TrackRemote, receiver *webrtc.RTPReceiver, dontShakeThatHandYet bool) {
+	fmt.Println("[in] got a track!", id, remote.ID(), remote.StreamID(), remote.Kind().String())
 	r.Lock()
 	if !r.doesRoomExists(roomId) {
 		r.Unlock()
@@ -306,16 +347,19 @@ func (r *RoomRepository) onPeerTrack(roomId string, id uint64, remote *webrtc.Tr
 		room.trackLock.Unlock()
 		r.updatePCTracks(roomId)
 	}(remote.ID())
-	go r.updatePCTracks(roomId)
+	if !dontShakeThatHandYet {
+		go r.updatePCTracks(roomId)
+	}
 	buffer := make([]byte, 1500)
 	for {
+		remote.SetReadDeadline(time.Now().Add(8 * time.Second))
 		n, _, err := remote.Read(buffer)
 		if err != nil {
-			println(err.Error())
+			println(1, remote.ID(), err.Error())
 			break
 		}
 		if _, err = trackLocal.Write(buffer[:n]); err != nil {
-			println(err.Error())
+			println(2, remote.ID(), err.Error())
 			break
 		}
 	}
@@ -326,7 +370,7 @@ func (r *RoomRepository) onPeerTrack(roomId string, id uint64, remote *webrtc.Tr
 }
 
 func (r *RoomRepository) updatePCTracks(roomId string) {
-	println("[] updatePCTracks start")
+	println("[updatePCTracks] start")
 	r.Lock()
 	if !r.doesRoomExists(roomId) {
 		r.Unlock()
@@ -337,24 +381,29 @@ func (r *RoomRepository) updatePCTracks(roomId string) {
 	room.Lock()
 	defer room.Unlock()
 	for _, peer := range room.Peers {
-		if peer.Conn == nil {
+		// accessing peer.RecvConn is like if peer is reciving then we have rtp senders and accessing peer.SendConn is like if peer is sending then we have rtp receivers.
+		if peer.RecvConn == nil {
 			continue
 		}
 		alreadySentTracks := map[string]*webrtc.RTPSender{}
 		receivingPeerTracks := map[string]*webrtc.RTPReceiver{}
-		for _, rtpSender := range peer.Conn.GetSenders() {
-			if rtpSender.Track() == nil {
-				continue
+		if peer.RecvConn != nil {
+			for _, rtpSender := range peer.RecvConn.GetSenders() {
+				if rtpSender.Track() == nil {
+					continue
+				}
+				track := rtpSender.Track()
+				alreadySentTracks[track.ID()] = rtpSender
 			}
-			track := rtpSender.Track()
-			alreadySentTracks[track.ID()] = rtpSender
 		}
-		for _, rtpReceiver := range peer.Conn.GetReceivers() {
-			if rtpReceiver.Track() == nil {
-				continue
+		if peer.SendConn != nil {
+			for _, rtpReceiver := range peer.SendConn.GetReceivers() {
+				if rtpReceiver.Track() == nil {
+					continue
+				}
+				track := rtpReceiver.Track()
+				receivingPeerTracks[track.ID()] = rtpReceiver
 			}
-			track := rtpReceiver.Track()
-			receivingPeerTracks[track.ID()] = rtpReceiver
 		}
 		room.trackLock.Lock()
 		renegotiate := false
@@ -363,11 +412,14 @@ func (r *RoomRepository) updatePCTracks(roomId string) {
 			_, alreadyReceived := receivingPeerTracks[id]
 			if track.OwnerId != peer.ID && (!alreadySend && !alreadyReceived) {
 				renegotiate = true
-				if peer.Conn.ConnectionState() == webrtc.PeerConnectionStateClosed {
+				if peer.RecvConn != nil && peer.RecvConn.ConnectionState() == webrtc.PeerConnectionStateClosed {
 					break
 				}
-				println("[PC] add track", track.TrackLocal.ID(), "to", peer.ID)
-				_, err := peer.Conn.AddTrack(track.TrackLocal)
+				println("[out] add track", track.TrackLocal.ID(), "to", peer.ID)
+				_, err := peer.RecvConn.AddTrack(track.TrackLocal)
+				/*_, err := peer.Conn.AddTransceiverFromTrack(track.TrackLocal, webrtc.RTPTransceiverInit{
+					Direction: webrtc.RTPTransceiverDirectionSendrecv,
+				})*/
 				if err != nil {
 					println(err.Error())
 					break
@@ -377,11 +429,11 @@ func (r *RoomRepository) updatePCTracks(roomId string) {
 		for trackId, rtpSender := range alreadySentTracks {
 			if _, exists := room.Tracks[trackId]; !exists {
 				renegotiate = true
-				if peer.Conn.ConnectionState() == webrtc.PeerConnectionStateClosed {
+				if peer.RecvConn.ConnectionState() == webrtc.PeerConnectionStateClosed {
 					break
 				}
 				println("[PC] remove track", trackId, "from", peer.ID)
-				err := peer.Conn.RemoveTrack(rtpSender)
+				err := peer.RecvConn.RemoveTrack(rtpSender)
 				if err != nil {
 					println(err.Error())
 					break
@@ -391,6 +443,7 @@ func (r *RoomRepository) updatePCTracks(roomId string) {
 		room.trackLock.Unlock()
 		if renegotiate {
 			go func(p *Peer, rid string) {
+
 				err := r.offerPeer(p, rid)
 				if err != nil {
 					println(`[E]`, err.Error())
@@ -399,10 +452,10 @@ func (r *RoomRepository) updatePCTracks(roomId string) {
 			}(peer, roomId)
 		}
 	}
-	println("[] updatePCTracks end")
+	println("[updatePCTracks] end")
 }
 
-func (r *RoomRepository) AddPeerIceCandidate(roomId string, id uint64, ic webrtc.ICECandidateInit) error {
+func (r *RoomRepository) AddPeerIceCandidate(roomId string, id uint64, ic webrtc.ICECandidateInit, connDirection dto.ConnectionDirection) error {
 	r.Lock()
 	if !r.doesRoomExists(roomId) {
 		r.Unlock()
@@ -419,7 +472,12 @@ func (r *RoomRepository) AddPeerIceCandidate(roomId string, id uint64, ic webrtc
 	peer := room.Peers[id]
 	room.Unlock()
 
-	err := peer.Conn.AddICECandidate(ic)
+	var err error
+	if connDirection == dto.CDSend {
+		err = peer.SendConn.AddICECandidate(ic)
+	} else {
+		err = peer.RecvConn.AddICECandidate(ic)
+	}
 	if err != nil {
 		return models.NewError(err.Error(), 500, models.MessageResponse{Message: err.Error()})
 	}
@@ -441,11 +499,12 @@ func (r *RoomRepository) SetPeerAnswer(roomId string, id uint64, answer webrtc.S
 	}
 	peer := room.Peers[id]
 	room.Unlock()
-	err := peer.Conn.SetRemoteDescription(answer)
+	err := peer.RecvConn.SetRemoteDescription(answer)
 	if err != nil {
 		return models.NewError(err.Error(), 500, models.MessageResponse{Message: err.Error()})
 	}
 	peer.HandshakeLock.Unlock()
+	// println("[lock_answer] unlocked handshake for peer:", peer.ID)
 	return nil
 }
 func (r *RoomRepository) SetPeerOffer(roomId string, id uint64, offer webrtc.SessionDescription) (sdpAnswer *webrtc.SessionDescription, err error) {
@@ -466,19 +525,30 @@ func (r *RoomRepository) SetPeerOffer(roomId string, id uint64, offer webrtc.Ses
 	room.Unlock()
 
 	if !peer.IsCaller {
-		return nil, models.NewError("only caller can offer", 403, nil)
+		// return nil, models.NewError("only caller can offer", 403, nil)
 	}
+	// println("[lock_offer] locking handshake for peer:", peer.ID)
 	peer.HandshakeLock.Lock()
-	defer peer.HandshakeLock.Unlock()
-	err = peer.Conn.SetRemoteDescription(offer)
+	// println("[lock_offer] locked handshake for peer:", peer.ID)
+	defer func() {
+		peer.HandshakeLock.Unlock()
+		// println("[lock_offer] unlocked handshake for peer:", peer.ID)
+	}()
+	targetConn := peer.SendConn
+	if targetConn == nil {
+		return nil, errors.New("targetConn is nil")
+	}
+
+	// defer peer.HandshakeLock.Unlock()
+	err = targetConn.SetRemoteDescription(offer)
 	if err != nil {
 		return nil, models.NewError(err.Error(), 500, models.MessageResponse{Message: err.Error()})
 	}
-	answer, err := peer.Conn.CreateAnswer(nil)
+	answer, err := targetConn.CreateAnswer(nil)
 	if err != nil {
 		return nil, models.NewError(err.Error(), 500, models.MessageResponse{Message: err.Error()})
 	}
-	err = peer.Conn.SetLocalDescription(answer)
+	err = targetConn.SetLocalDescription(answer)
 	if err != nil {
 		return nil, models.NewError(err.Error(), 500, models.MessageResponse{Message: err.Error()})
 	}
@@ -521,7 +591,12 @@ func (r *RoomRepository) ClosePeer(roomId string, id uint64) error {
 		return models.NewError("no such a peer with this id in this room", 403, map[string]any{"roomId": roomId, "peerId": id})
 	}
 	room.Unlock()
-	return peer.Conn.Close()
+	err1 := peer.SendConn.Close()
+	err2 := peer.RecvConn.Close()
+	if err1 != nil {
+		return err1
+	}
+	return err2
 }
 
 func (r *RoomRepository) ResetRoom(roomId string) (uint64, error) {
@@ -535,9 +610,13 @@ func (r *RoomRepository) ResetRoom(roomId string) (uint64, error) {
 	ggid := room.ggId
 	room.timer.Stop()
 	for _, peer := range room.Peers {
-		go func(conn *webrtc.PeerConnection) {
-			_ = conn.Close()
-		}(peer.Conn)
+		go func(conns ...*webrtc.PeerConnection) {
+			for _, c := range conns {
+				if c != nil {
+					_ = c.Close()
+				}
+			}
+		}(peer.RecvConn, peer.SendConn)
 	}
 	room.Unlock()
 	delete(r.Rooms, roomId)
@@ -545,14 +624,19 @@ func (r *RoomRepository) ResetRoom(roomId string) (uint64, error) {
 }
 
 func (r *RoomRepository) offerPeer(peer *Peer, roomId string) error {
+	// println("[lock_op] locking handshake for peer:", peer.ID)
 	peer.HandshakeLock.Lock()
 	println("[PC] negotiating with peer", peer.ID)
-	offer, err := peer.Conn.CreateOffer(nil)
+	targetConn := peer.RecvConn
+
+	offer, err := targetConn.CreateOffer(nil)
 	if err != nil {
+		peer.HandshakeLock.Unlock()
 		return err
 	}
-	err = peer.Conn.SetLocalDescription(offer)
+	err = targetConn.SetLocalDescription(offer)
 	if err != nil {
+		peer.HandshakeLock.Unlock()
 		return err
 	}
 	ggid := r.GetRoomGGID(roomId)

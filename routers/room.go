@@ -2,7 +2,7 @@ package routers
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/greatape/goldgorilla/controllers"
+	"github.com/reiver/goldgorilla/controllers"
 )
 
 func registerRoomRoutes(rg *gin.RouterGroup, ctrl *controllers.RoomController) {

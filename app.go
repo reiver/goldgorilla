@@ -4,17 +4,18 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/pion/webrtc/v3"
 	"io"
 	"net/http"
 	"os"
 	"os/signal"
-	"github.com/greatape/goldgorilla/controllers"
-	"github.com/greatape/goldgorilla/models"
-	"github.com/greatape/goldgorilla/repositories"
-	"github.com/greatape/goldgorilla/routers"
 	"syscall"
 	"time"
+
+	"github.com/pion/webrtc/v3"
+	"github.com/reiver/goldgorilla/controllers"
+	"github.com/reiver/goldgorilla/models"
+	"github.com/reiver/goldgorilla/repositories"
+	"github.com/reiver/goldgorilla/routers"
 )
 
 type App struct {
@@ -68,6 +69,7 @@ func (a *App) Run() {
 			Timeout: 8 * time.Second,
 		}
 		for data := range *a.conf.StartRejoinCH {
+			return
 			if data.SimplyJoin {
 				buffer, _ := json.Marshal(map[string]any{"roomId": data.RoomId})
 				body := bytes.NewReader(buffer)
