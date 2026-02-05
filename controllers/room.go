@@ -6,9 +6,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"io"
 	"net/http"
-	"github.com/greatape/goldgorilla/models"
-	"github.com/greatape/goldgorilla/models/dto"
-	"github.com/greatape/goldgorilla/repositories"
+	"codeberg.org/goldgorilla/logjam/models"
+	"codeberg.org/goldgorilla/logjam/models/dto"
+	"codeberg.org/goldgorilla/logjam/repositories"
 	"time"
 )
 

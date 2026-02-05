@@ -2,7 +2,7 @@ package routers
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/greatape/goldgorilla/controllers"
+	"codeberg.org/goldgorilla/logjam/controllers"
 )
 
 type Router struct {

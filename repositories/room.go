@@ -10,8 +10,8 @@ import (
 	"github.com/pion/webrtc/v3"
 	"net"
 	"net/http"
-	"github.com/greatape/goldgorilla/models"
-	"github.com/greatape/goldgorilla/models/dto"
+	"codeberg.org/goldgorilla/logjam/models"
+	"codeberg.org/goldgorilla/logjam/models/dto"
 	"sync"
 	"time"
 )
